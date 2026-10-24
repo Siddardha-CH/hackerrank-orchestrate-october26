@@ -1,0 +1,143 @@
+{
+  "account_admin_console_20260926.png": {
+    "sha256": "d5c32ca5b6e1a2b4bbe9f5d41835ef1fd5d4f7061dab9067a4f9f88cea3c1861",
+    "application": "Customer Operations (customer profile page)",
+    "subject": {"name": "Haruka Sato", "emails": ["haruka.s1838@zoho.com"], "user_ids": ["user_11"]},
+    "records": [
+      {"resource_id": "account_5762", "alias": null, "system": "account_service", "category": "USER_PROFILE",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["user_11", "Haruka Sato", "haruka.s1838@zoho.com", "+81 90 7610 2507"]},
+      {"resource_id": "support_9538", "alias": "CS-8538", "system": "support_platform", "category": null,
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null,
+       "identifiers": ["user_11", "Haruka Sato"]}
+    ]
+  },
+  "analytics_profile_view_20260713.png": {
+    "sha256": "4e4cb259bc2010b622b0c53fe5872258f994fefc23452a83bb27473758693484",
+    "application": "Pulse Analytics (user profile)",
+    "subject": {"name": "Omar Darwish", "emails": ["darwish.omar@icloud.com"], "user_ids": ["user_20"]},
+    "records": [
+      {"resource_id": "analytics_7438", "alias": null, "system": "analytics_platform", "category": "ANALYTICS_PROFILE",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["user_20", "Omar Darwish", "darwish.omar@icloud.com"]}
+    ]
+  },
+  "backup_restore_console_20260429.png": {
+    "sha256": "2c246aa5843bec609b9ddfdf1154cd81e0fd61996f83954735e9856e48c18bf3",
+    "application": "Vault Recovery Manager (customer-platform archives)",
+    "subject": {"name": null, "emails": ["areed1433@gmail.com"], "user_ids": []},
+    "records": [
+      {"resource_id": "backup_9287", "alias": "segment-42-20260426.tar.zst", "system": "backup_service", "category": "BACKUP_ARCHIVE",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["areed1433@gmail.com"]}
+    ]
+  },
+  "connector_management_console_20260807.png": {
+    "sha256": "e81fabc93ea1b5f4c918d934cdb2bea05d61737adfcc29f281494f5d8ec46355",
+    "application": "BridgeOps (connections topology)",
+    "subject": {"name": null, "emails": ["jain.aditi@gmail.com", "lucia-torres@gmail.com"], "user_ids": []},
+    "records": [
+      {"resource_id": "data_flow_1121", "alias": null, "system": "integration_service", "category": "DATA_FLOW",
+       "present": true, "exposed": true, "enabled": true, "restore_allowed": null,
+       "identifiers": ["jain.aditi@gmail.com"]},
+      {"resource_id": "data_flow_9846", "alias": null, "system": "integration_service", "category": "DATA_FLOW",
+       "present": true, "exposed": true, "enabled": true, "restore_allowed": null,
+       "identifiers": ["lucia-torres@gmail.com"]}
+    ]
+  },
+  "customer_export_console_20260618.png": {
+    "sha256": "18b95c1bd8b8956e40216df935498a9f3c181ea2a69b5cd6d3c0841a816d5557",
+    "application": "Customer Download Center (data exports)",
+    "subject": {"name": null, "emails": ["ingrid.dahl@outlook.com"], "user_ids": []},
+    "records": [
+      {"resource_id": "export_1260", "alias": "customer_export_1260.zip", "system": "export_service", "category": "USER_EXPORT",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["ingrid.dahl@outlook.com"]}
+    ]
+  },
+  "deleted_account_reference_20260310.png": {
+    "sha256": "68c28a72afd6ed184d5990d15c543f8a516face204f0360f732755a8a63c28be",
+    "application": "Customer Reference Registry (retained customer key)",
+    "subject": {"name": null, "emails": [], "user_ids": ["user_17"]},
+    "records": [
+      {"resource_id": null, "alias": "user_17", "system": "identity_service", "category": "ACCOUNT_TOMBSTONE",
+       "present": true, "exposed": false, "enabled": null, "restore_allowed": null,
+       "identifiers": ["user_17"]}
+    ]
+  },
+  "marketing_profile_console.png": {
+    "sha256": "51fa0e6a38f8fa3629ba1b0d0b90b4ed139715956b97bfd09a6f1a6232c15df5",
+    "application": "Audience Operations (marketing profile)",
+    "subject": {"name": "Soo-jin Park", "emails": ["sj.park@naver.com"], "user_ids": []},
+    "records": [
+      {"resource_id": "marketing_001", "alias": null, "system": "marketing_platform", "category": "MARKETING_PROFILE",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["Soo-jin Park", "sj.park@naver.com", "+82 10-5837-9451"]}
+    ]
+  },
+  "object_storage_browser_20260213.png": {
+    "sha256": "96e9a191380c29b9e0ab997007268c4cd6353cb6721ebd1ed4a32599d8d37e04",
+    "application": "Nimbus Object Storage (northstar-customer-data / support-attachments)",
+    "subject": {"name": null, "emails": [], "user_ids": []},
+    "records": [
+      {"resource_id": null, "alias": "delivery_confirmation_19.pdf", "system": "object_storage", "category": "SUPPORT_ATTACHMENT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []},
+      {"resource_id": null, "alias": "delivery_confirmation_20.pdf", "system": "object_storage", "category": "SUPPORT_ATTACHMENT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []},
+      {"resource_id": null, "alias": "return_label_4821.pdf", "system": "object_storage", "category": "SUPPORT_ATTACHMENT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []},
+      {"resource_id": null, "alias": "return_label_4876.pdf", "system": "object_storage", "category": "SUPPORT_ATTACHMENT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []},
+      {"resource_id": null, "alias": "invoice_NS-10493.pdf", "system": "object_storage", "category": "SUPPORT_ATTACHMENT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []},
+      {"resource_id": null, "alias": "parcel_damage_7713.jpg", "system": "object_storage", "category": "SUPPORT_ATTACHMENT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []},
+      {"resource_id": null, "alias": "customer_export_2026-02-10.zip", "system": "object_storage", "category": "USER_EXPORT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []},
+      {"resource_id": null, "alias": "customer_export_2026-02-12.zip", "system": "object_storage", "category": "USER_EXPORT",
+       "present": true, "exposed": null, "enabled": null, "restore_allowed": null, "identifiers": []}
+    ]
+  },
+  "search_index_inspector_20260901.png": {
+    "sha256": "75afdb0ae53a4510c83399a70d88073cb4fb2747454095756e4ddad1a8c70605",
+    "application": "Search Console (customer_directory_v3, query email:g.silva76@gmail.com)",
+    "subject": {"name": "Gabriel Silva", "emails": ["g.silva76@gmail.com"], "user_ids": ["user_13"]},
+    "records": [
+      {"resource_id": "search_428", "alias": null, "system": "search_service", "category": "SEARCH_INDEX_ENTRY",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["Gabriel Silva", "g.silva76@gmail.com", "user_13"]},
+      {"resource_id": "search_1874", "alias": null, "system": "search_service", "category": "SEARCH_INDEX_ENTRY",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["g.silva76.jr@gmail.com"]}
+    ]
+  },
+  "security_audit_explorer_20260905.png": {
+    "sha256": "ca59f693f4e7002466b3fdeaf1bb6763618770963dd811b60003772d07b4b03b",
+    "application": "Sentinel (signed account events, subject filter user_03)",
+    "subject": {"name": null, "emails": [], "user_ids": ["user_03"]},
+    "records": [
+      {"resource_id": "audit_record_003", "alias": null, "system": "security_service", "category": "SECURITY_AUDIT_LOG",
+       "present": true, "exposed": false, "enabled": null, "restore_allowed": null, "identifiers": ["user_03"]},
+      {"resource_id": "audit_record_002", "alias": null, "system": "security_service", "category": "SECURITY_AUDIT_LOG",
+       "present": true, "exposed": false, "enabled": null, "restore_allowed": null, "identifiers": ["user_03"]},
+      {"resource_id": "audit_record_001", "alias": null, "system": "security_service", "category": "SECURITY_AUDIT_LOG",
+       "present": true, "exposed": false, "enabled": null, "restore_allowed": null, "identifiers": ["user_03"]},
+      {"resource_id": "audit_record_006", "alias": null, "system": "security_service", "category": "SECURITY_AUDIT_LOG",
+       "present": true, "exposed": false, "enabled": null, "restore_allowed": null, "identifiers": ["user_03"]},
+      {"resource_id": "audit_record_005", "alias": null, "system": "security_service", "category": "SECURITY_AUDIT_LOG",
+       "present": true, "exposed": false, "enabled": null, "restore_allowed": null, "identifiers": ["user_03"]},
+      {"resource_id": "audit_record_004", "alias": null, "system": "security_service", "category": "SECURITY_AUDIT_LOG",
+       "present": true, "exposed": false, "enabled": null, "restore_allowed": null, "identifiers": ["user_03"]}
+    ]
+  },
+  "support_ticket_console_20260524.png": {
+    "sha256": "542b7aec17e6b2f38827896e7eb52c70e4bfaaca22433621be1f80f54884e944",
+    "application": "Helpline Console (ticket CS-5034 conversation)",
+    "subject": {"name": "Kofi Agyeman", "emails": ["kagyeman8947@fastmail.com"], "user_ids": []},
+    "records": [
+      {"resource_id": "support_1034", "alias": "CS-5034", "system": "support_platform", "category": "SUPPORT_MESSAGE",
+       "present": true, "exposed": true, "enabled": null, "restore_allowed": null,
+       "identifiers": ["Kofi Agyeman", "kagyeman8947@fastmail.com"]}
+    ]
+  }
+}

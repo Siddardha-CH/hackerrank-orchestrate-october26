@@ -1,0 +1,21 @@
+{
+  "requests": 518,
+  "seconds": 1.22,
+  "vision": {
+    "calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_hits": 11,
+    "model": "claude-opus-5-5"
+  },
+  "intent_llm": {
+    "calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  "status_counts": {
+    "COMPLETE": 149,
+    "INCOMPLETE": 359,
+    "NOT_APPLICABLE": 10
+  }
+}
