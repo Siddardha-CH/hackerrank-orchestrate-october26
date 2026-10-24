@@ -480,13 +480,27 @@ def parse_text_handover(path, file_id, captured_at) -> list[Observation]:
 # Documents (PDF) and images
 # --------------------------------------------------------------------------------------
 
+PDF_CACHE = os.path.join(os.path.dirname(__file__), "document_cache.json")
+
+
 def pdf_text(path) -> str:
+    """Text of a PDF via pypdf; falls back to the hash-keyed cache shipped with the code so results are
+    identical on machines without pypdf."""
+    import hashlib
+    digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
+    cache = json.load(open(PDF_CACHE, encoding="utf-8")) if os.path.exists(PDF_CACHE) else {}
     try:
         import pypdf
-    except ImportError:  # pragma: no cover
-        return ""
-    r = pypdf.PdfReader(path)
-    return "\n".join(p.extract_text() or "" for p in r.pages)
+        text = "\n".join(p.extract_text() or "" for p in pypdf.PdfReader(path).pages)
+    except ImportError:
+        return cache.get(digest, {}).get("text", "")
+    if cache.get(digest, {}).get("text") != text:
+        cache[digest] = {"file": os.path.basename(path), "text": text}
+        try:
+            json.dump(cache, open(PDF_CACHE, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+        except OSError:
+            pass
+    return text
 
 
 def parse_pdf(path, file_id, captured_at) -> list[Observation]:

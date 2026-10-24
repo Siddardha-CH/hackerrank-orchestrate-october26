@@ -33,3 +33,25 @@ repo_root=D:\hackerank\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
 
+## [2026-10-24T19:30:00+05:30] Final end-to-end retest and submission packaging
+
+User Prompt (verbatim, secrets redacted):
+[Pasted HackerRank upload page text: "Upload Code / Upload Output / Upload Transcript ... Solution ZIP (Max 50 MB)"]
+once aagain test allthings and give me the winning thing
+
+Agent Response Summary:
+Re-tested from a fresh clone of the pushed repo and from the extracted code.zip with only the dataset added: both reproduce byte-identical output.csv (md5 ff9cad5f...). Found that running without pypdf changed one case (case_33, PDF evidence); added a hash-keyed PDF text fallback cache so results are identical with or without pypdf. Re-ran evaluation (100% status, 90.6% exact, F1 99.2% on samples; 6/6 custom cases; 0 output problems), lint and a secret scan, rebuilt code.zip, committed and pushed.
+
+Actions:
+* fresh clone + python code/main.py; extracted code.zip + dataset and reran main and evaluation
+* added PDF text fallback cache (code/audit/evidence.py, code/audit/document_cache.json); README note
+* pyflakes, secret scan, rebuilt code.zip, git commit + push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=main
+repo_root=D:\hackerank\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+

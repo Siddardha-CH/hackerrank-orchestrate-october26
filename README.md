@@ -16,7 +16,9 @@ case_id,deletion_status,steps_json      ->  output.csv (518 rows, natural case_i
 
 ## Quick start
 
-Requirements: Python 3.10+ and `pypdf` (PDF text). No API key is needed to reproduce `output.csv`.
+Requirements: Python 3.10+. `pypdf` is recommended for reading PDFs; without it the agent falls back to the
+hash-keyed text cache in `code/audit/document_cache.json` and produces the identical `output.csv`.
+No API key is needed to reproduce `output.csv`.
 
 ```bash
 pip install -r code/requirements.txt
