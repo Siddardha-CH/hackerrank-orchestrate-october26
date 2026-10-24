@@ -154,3 +154,25 @@ repo_root=D:\hackerank\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
 
+## [2026-10-24T21:30:00+05:30] Post-interview rework: fix weaknesses raised by the AI judge
+
+User Prompt (verbatim, secrets redacted):
+[Screenshot of leaderboard: rank #1, Chat transcript 1.5/10, AI judge interview 23.1/30, Output CSV 28.8/30, Code zip 13.8/30, Total 67.2/100]
+re work i need 80 point trwshold  for sure do wthat ever u want fix all issue swe discussed in interview i need best of the besr
+
+Agent Response Summary:
+Addressed every weakness discussed in the AI-judge interview. Timing parameters are no longer hard-coded: code/audit/calibration.py learns the workflow cadence, opener residues, timing windows and status mapping from identifier-anchored runs on every execution (two-stage calibration after a first attempt mis-learned a residue). The greedy assignment was replaced by an exact max-weight (Hungarian) assignment per connected component, with genuine near-ties written to review_queue.csv instead of being decided silently. Intent rules now require the erasure verb to target the account or the person's data; COMPLETE now requires admissible evidence for every record. Prompts moved to code/prompts/*.md, an optional --llm-review second opinion was added, 9 stdlib unit tests were added (one found a real cloud-log parser bug), and the evaluation report gained learned-parameter tables, bootstrap confidence intervals, split-half metrics, robustness checks (determinism, input-order invariance, no-pypdf) and review-queue statistics. Sample metrics are unchanged (100% status, 90.6% exact, 99.2% step F1); versus the previously submitted output.csv only three genuinely tied case pairs changed. Told the user no score can be guaranteed and resubmission eligibility is theirs to check.
+
+Actions:
+* created code/audit/calibration.py, code/audit/assignment.py, code/audit/review.py, code/prompts/*.md, code/tests/test_units.py
+* rewrote code/audit/engine.py and code/audit/intent.py; updated policy.py, pipeline.py, evidence.py, vision.py, main.py, evaluation/main.py, evaluation/custom_cases.py
+* ran python code/main.py, python code/evaluation/main.py, python -m unittest; rebuilt code.zip; git commit + push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=main
+repo_root=D:\hackerank\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+

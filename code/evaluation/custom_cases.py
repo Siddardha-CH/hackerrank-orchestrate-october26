@@ -58,4 +58,12 @@ CUSTOM_CASES = [
                     request_text="Please close my account and process the associated personal-data deletion."),
         "check": ("excludes_resource", "search_1874"),
     },
+    {
+        "id": "custom_field_edit_not_deletion",
+        "what": "Interview failure case: 'remove' aimed at a single field ('remove the old shipping address from my "
+                "profile') is a correction, not an account deletion.",
+        "row": dict(case_id="custom_07", **BASE_21,
+                    request_text="Please remove the old shipping address from my profile."),
+        "check": ("expect", {"deletion_status": "NOT_APPLICABLE", "steps": []}),
+    },
 ]

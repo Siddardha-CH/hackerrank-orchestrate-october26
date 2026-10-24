@@ -9,10 +9,12 @@ Linking strategy (in order of strength):
    statement numbers, customer keys) to resource ids and subjects.
 3. **Workflow links** – records that have already been de-identified carry no identifier, so they
    are attributed through the deletion workflow that touched them: deletion-worker activities in the
-   request's processing window, grouped into chains by their fixed scheduling cadence, scored by
-   chain-mates that are directly linked, co-occurrence in the same evidence capture as the
-   subject's other records, and timing relative to ``reported_at``.  A global greedy assignment
-   prevents one record being attributed to two requests.
+   request's processing window, grouped into runs by the scheduler cadence, scored by run members
+   that are directly linked, co-occurrence in the same evidence capture as the subject's other
+   records, and timing relative to ``reported_at``.  The cadence parameters are *learned* from
+   identifier-anchored runs on every execution (calibration.py) and runs are given to requests by an
+   exact maximum-weight assignment (assignment.py), so one record can never be attributed to two
+   requests.  Genuine near-ties are flagged for human review.
 """
 from __future__ import annotations
 
@@ -21,6 +23,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+from .assignment import max_weight_assignment
+from .calibration import Calibration, calibrate
 from .data import Identity, World, parse_ts
 from .evidence import Observation
 
@@ -28,8 +32,8 @@ WORKFLOW_TYPES = {
     "DELETE_RECORD", "REDACT_RECORD", "ANONYMIZE_RECORD", "DISABLE_DATA_FLOW", "BLOCK_RESTORE",
     "CHECK_DATA_FLOW", "CHECK_RESTORE_ACCESS", "RETAIN_RECORD",
 }
-CHAIN_GAPS = (390, 449, 1110, 1169)  # seconds between consecutive actions of one workflow run
-GAP_TOL = 3
+AMBIGUITY_MARGIN = 1.0  # score difference below which two candidate requests count as a genuine tie
+DIRECT = 100.0          # weight of one directly attributed run member
 
 # category -> required action (from deletion_rules.csv semantics)
 PREFIX_CATEGORY = {
@@ -48,6 +52,13 @@ def prefix_of(rid: str) -> str:
     return rid.split("_")[0]
 
 
+def case_num(cid: str) -> int:
+    try:
+        return int(cid.split("_")[-1])
+    except ValueError:
+        return 0
+
+
 @dataclass
 class Request:
     case_id: str
@@ -58,6 +69,7 @@ class Request:
     audit_at: object
     text: str
     deletion: bool = True
+    intent_source: str = ""
     identity: Identity | None = None
     resources: dict = field(default_factory=dict)  # rid -> set(reasons)
     home_files: set = field(default_factory=set)
@@ -81,7 +93,10 @@ class Engine:
         self.act_by_res: dict[str, list] = defaultdict(list)
         for a in self.acts:
             self.act_by_res[a["resource_id"]].append(a)
-        self._build_chains()
+        self.cal = Calibration()
+        self.runs: list = []
+        self.chain_of: dict = {}
+        self.review: list = []  # ambiguous attributions for a human reviewer
 
     # ------------------------------------------------------------------ catalog links
     LINK_RE = re.compile(r"(?:linked|confirmed) (\S+) \(([^)]*)\)")
@@ -113,7 +128,7 @@ class Engine:
                 o.system = info["system"]
                 o.keys |= set(info["emails"]) | set(info["users"])
 
-    # ------------------------------------------------------------------ chains / workflow runs
+    # ------------------------------------------------------------------ workflow runs
     @staticmethod
     def is_workflow(a) -> bool:
         if a["source_system"] == "deletion_worker" and a["event_type"] in WORKFLOW_TYPES:
@@ -123,17 +138,15 @@ class Engine:
             a["details"].startswith("Replication worker") or "repopulated" in a["details"])
 
     def _build_chains(self):
-        """Group workflow activities into runs.
-
-        Follow-up actions of one deletion run are scheduled at a fixed cadence (6.5/7.5 min before the
-        report or 18.5/19.5 min after it); the account deletion that opened the run precedes the first
-        follow-up by a whole number of minutes plus a constant 41 s (pre-report runs) or 52 s
-        (post-report runs).  These regularities let records that no longer carry identifiers be
-        attributed to the same run as records that still do."""
+        """Group workflow activities into runs using the calibrated cadence: follow-up actions are
+        linked when their gap matches a learned interval; an account deletion is paired with the run
+        it opened when the gap lies in a learned range and carries the learned seconds residue."""
+        cal = self.cal
         wf = [a for a in self.acts if self.is_workflow(a)]
         accts = [a for a in wf if a["resource_id"].startswith("account_") and a["event_type"] == "DELETE_RECORD"]
-        rest = [a for a in wf if a not in accts and not a["resource_id"].startswith("account_")]
-        rest.sort(key=lambda a: a["_t"])
+        acct_ids = {a["activity_id"] for a in accts}
+        rest = sorted((a for a in wf if a["activity_id"] not in acct_ids and not a["resource_id"].startswith("account_")),
+                      key=lambda a: (a["_t"], a["activity_id"]))
         parent = {a["activity_id"]: a["activity_id"] for a in rest}
 
         def find(x):
@@ -142,27 +155,28 @@ class Engine:
                 x = parent[x]
             return x
 
+        max_gap = max(cal.chain_gaps, default=0) + cal.gap_tolerance
         for i, a in enumerate(rest):
             for b in rest[i + 1:]:
                 gap = (b["_t"] - a["_t"]).total_seconds()
-                if gap > max(CHAIN_GAPS) + GAP_TOL:
+                if gap > max_gap:
                     break
-                if any(abs(gap - g) <= GAP_TOL for g in CHAIN_GAPS):
+                if any(abs(gap - g) <= cal.gap_tolerance for g in cal.chain_gaps):
                     parent[find(b["activity_id"])] = find(a["activity_id"])
         groups = defaultdict(list)
         for a in rest:
             groups[find(a["activity_id"])].append(a)
-        runs = [dict(acts=sorted(m, key=lambda a: a["_t"]), account=None) for m in groups.values()]
-        # pair account deletions with the run they opened
+        runs = [dict(acts=sorted(m, key=lambda a: (a["_t"], a["activity_id"])), account=None) for m in groups.values()]
+        runs.sort(key=lambda r: (r["acts"][0]["_t"], r["acts"][0]["activity_id"]))
         pairs = []
         for ac in accts:
             for ri, run in enumerate(runs):
                 g = (run["acts"][0]["_t"] - ac["_t"]).total_seconds()
-                sec = g % 60
-                if 10 * 60 <= g <= 55 * 60 and 39 <= sec <= 43:
-                    pairs.append((abs(sec - 41), g, ac["activity_id"], ri))
-                elif 75 * 60 <= g <= 140 * 60 and 50 <= sec <= 54:
-                    pairs.append((abs(sec - 52), g, ac["activity_id"], ri))
+                for spec in cal.opener.values():
+                    d = abs(g % 60 - spec["residue"])
+                    d = min(d, 60 - d)
+                    if spec["lo"] <= g <= spec["hi"] and d <= cal.residue_tolerance:
+                        pairs.append((d, g, ac["activity_id"], ri))
         pairs.sort()
         used_a, used_r = set(), set()
         acct_by_id = {a["activity_id"]: a for a in accts}
@@ -172,15 +186,19 @@ class Engine:
             used_a.add(aid)
             used_r.add(ri)
             runs[ri]["account"] = acct_by_id[aid]
-        for ac in accts:
+        for ac in sorted(accts, key=lambda a: (a["_t"], a["activity_id"])):
             if ac["activity_id"] not in used_a:
                 runs.append(dict(acts=[], account=ac))
         self.runs = runs
         self.chain_of = {}
-        for run in runs:
-            rids = [m["resource_id"] for m in run["acts"]] + ([run["account"]["resource_id"]] if run["account"] else [])
-            for m in run["acts"] + ([run["account"]] if run["account"] else []):
-                self.chain_of[m["activity_id"]] = rids
+        for ri in range(len(runs)):
+            members = self._members(ri)
+            for m in members:
+                self.chain_of[m["activity_id"]] = [x["resource_id"] for x in members]
+
+    def _members(self, ri):
+        run = self.runs[ri]
+        return run["acts"] + ([run["account"]] if run["account"] else [])
 
     # ------------------------------------------------------------------ linking
     def direct_links(self, req: Request, same_user: list[Request]) -> set:
@@ -209,18 +227,19 @@ class Engine:
         return same_user[-1]
 
     def link_all(self, requests: list[Request]):
+        requests = sorted(requests, key=lambda r: case_num(r.case_id))  # input-order independent
         by_user = defaultdict(list)
         for r in requests:
             uid = min(r.identity.user_ids) if r.identity.user_ids else r.email.lower()
             by_user[uid].append(r)
         for lst in by_user.values():
-            lst.sort(key=lambda r: r.audit_at)
+            lst.sort(key=lambda r: (r.audit_at, case_num(r.case_id)))
         owner_of = {}  # rid -> request (direct)
-        for lst in by_user.values():
-            for r in lst:
+        for uid in sorted(by_user):
+            for r in by_user[uid]:
                 if not r.deletion:
                     continue
-                for rid in self.direct_links(r, lst):
+                for rid in sorted(self.direct_links(r, by_user[uid])):
                     r.resources.setdefault(rid, set()).add("direct")
                     owner_of.setdefault(rid, r)
         for r in requests:
@@ -228,54 +247,85 @@ class Engine:
                 r.home_files = {o.file_id for rid in r.resources for o in self.by_res[rid]
                                 if o.keys & r.identity.strong_keys()}
 
-        # workflow runs -> requests
+        # learn the scheduler cadence from identifier-anchored runs, then build runs
+        self.cal = calibrate(requests, self.act_by_res, self.is_workflow, owner_of, self.acts)
+        self._build_chains()
+
+        # score every (run, request) pairing
         dels = [r for r in requests if r.deletion]
-        status_map = {"SUCCESS": "COMPLETE", "PARTIAL": "PARTIALLY_COMPLETE", "FAILED": "NOT_STARTED"}
-        cand = []
-        for ri, run in enumerate(self.runs):
-            members = run["acts"] + ([run["account"]] if run["account"] else [])
+        cand = defaultdict(dict)  # run index -> {request index: score}
+        for ri in range(len(self.runs)):
+            members = self._members(ri)
             rids = {m["resource_id"] for m in members}
             owners = {id(owner_of[x]) for x in rids if x in owner_of}
             t0 = min(m["_t"] for m in members)
             t1 = max(m["_t"] for m in members)
-            for r in dels:
+            for qi, r in enumerate(dels):
                 if not (r.requested_at <= t0 and t1 <= r.reported_at + timedelta(hours=3)):
                     continue
                 if owners and id(r) not in owners:
                     continue
-                score = 100.0 * sum(1 for x in rids if x in owner_of and owner_of[x] is r)
-                ok_time = False
-                if run["account"]:
-                    d = (run["account"]["_t"] - r.reported_at).total_seconds() / 60
-                    ok_time = -80 <= d <= -40 or -15 <= d <= 15
-                    exp = status_map.get(run["account"]["reported_result"])
-                    score += 20 if exp == r.reported_status else -20
-                if run["acts"]:
-                    d = (run["acts"][0]["_t"] - r.reported_at).total_seconds() / 60
-                    ok_time = ok_time or -35 <= d <= -3 or 30 <= d <= 125 or -15 <= d <= 15
-                if not ok_time and score < 100:
+                score = self._score(ri, rids, r, owner_of, t0)
+                if score is not None:
+                    cand[ri][qi] = score
+
+        # 1) a run holding a record directly attributed to a request goes to that request
+        assigned, has_account = {}, set()
+        for ri in sorted(cand):
+            qi, sc = max(cand[ri].items(), key=lambda kv: (kv[1], -kv[0]))
+            if sc >= DIRECT:
+                assigned[ri] = qi
+                if self.runs[ri]["account"]:
+                    has_account.add(qi)
+        # 2) the rest: exact maximum-weight assignment - at most one account-opening run and one
+        #    loose run per request, and every run to at most one request
+        for kind in ("account", "loose"):
+            edges = {}
+            for ri, opts in cand.items():
+                if ri in assigned or bool(self.runs[ri]["account"]) != (kind == "account"):
                     continue
-                score += 5 if ok_time else 0
-                score += 10 * sum(1 for x in rids if any(o.file_id in r.home_files for o in self.by_res.get(x, [])))
-                score -= abs((t0 - r.reported_at).total_seconds()) / 1e6
-                cand.append((score, ri, r))
-        cand.sort(key=lambda c: (-c[0], c[1], c[2].case_id))
-        taken_runs, has_account, has_loose = set(), set(), set()
-        for score, ri, r in cand:
-            run = self.runs[ri]
-            if ri in taken_runs:
-                continue
-            if run["account"] and id(r) in has_account:
-                continue
-            if not run["account"] and score < 100 and id(r) in has_loose:
-                continue
-            taken_runs.add(ri)
-            if run["account"]:
-                has_account.add(id(r))
-            elif score < 100:
-                has_loose.add(id(r))
-            for m in run["acts"] + ([run["account"]] if run["account"] else []):
+                for qi, sc in opts.items():
+                    if kind == "account" and qi in has_account:
+                        continue
+                    edges[(ri, qi)] = sc + 1000.0  # attributing beats leaving a run unassigned
+            assigned.update(max_weight_assignment(edges))
+        # 3) flag genuine near-ties.  The output contract has no "undecided" status and dropping the
+        #    record would hide data from the audit, so the best-supported attribution is kept and the
+        #    case is listed for a reviewer (review_queue.csv).
+        for ri, qi in sorted(assigned.items()):
+            alts = [(sc, q) for q, sc in cand[ri].items() if q != qi]
+            if alts:
+                sc, q = max(alts)
+                if abs(cand[ri][qi] - sc) < AMBIGUITY_MARGIN:
+                    self.review.append(dict(
+                        case_id=dels[qi].case_id, reason="workflow_run_tie",
+                        detail=f"run {sorted({m['resource_id'] for m in self._members(ri)})} also fits "
+                               f"{dels[q].case_id} (score {cand[ri][qi]:.2f} vs {sc:.2f})"))
+        for ri, qi in sorted(assigned.items()):
+            r = dels[qi]
+            how = "workflow" if cand[ri][qi] >= DIRECT else "workflow_timing"  # anchored run vs timing alone
+            for m in self._members(ri):
                 x = m["resource_id"]
                 if x in owner_of and owner_of[x] is not r:
                     continue  # directly attributed to another request
-                r.resources.setdefault(x, set()).add("workflow")
+                r.resources.setdefault(x, set()).add(how)
+
+    def _score(self, ri, rids, r, owner_of, t0):
+        cal, run = self.cal, self.runs[ri]
+        score = DIRECT * sum(1 for x in rids if x in owner_of and owner_of[x] is r)
+        ok_time = False
+        if run["account"]:
+            d = (run["account"]["_t"] - r.reported_at).total_seconds() / 60
+            ok_time = any(lo <= d <= hi for lo, hi in cal.account_windows)
+            expected = cal.status_map.get(run["account"]["reported_result"])
+            if expected:
+                score += 20 if expected == r.reported_status else -20
+        if run["acts"]:
+            d = (run["acts"][0]["_t"] - r.reported_at).total_seconds() / 60
+            ok_time = ok_time or any(lo <= d <= hi for lo, hi in cal.action_windows)
+        if not ok_time and score < DIRECT:
+            return None
+        score += 5 if ok_time else 0
+        score += 10 * sum(1 for x in rids if any(o.file_id in r.home_files for o in self.by_res.get(x, [])))
+        score -= abs((t0 - r.reported_at).total_seconds()) / 1e6
+        return score

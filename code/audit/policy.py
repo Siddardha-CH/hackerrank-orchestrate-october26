@@ -64,6 +64,7 @@ class Assessment:
     violation: bool        # finding needed
     evidence: str          # evidence id proving the current state ('' if none admissible)
     known: bool            # do we have admissible evidence of the state?
+    proof: str = "explicit"  # explicit | omission | none
 
 
 def categorize(rid: str, obs: list[Observation], acts: list[dict]) -> str:
@@ -126,9 +127,10 @@ def assess(rid: str, obs_all: list[Observation], acts: list[dict], audit_at, rul
         # no capture shows the record at all: a later capture of the whole system that omits it proves absence
         om = omission(rid, system, since, audit_at, {o.file_id for o in obs_all})
         if om:
-            st = dict(file_id=om[1], ts=om[0], present=False, exposed=False, enabled=None, restore_allowed=None)
+            st = dict(file_id=om[1], ts=om[0], present=False, exposed=False, enabled=None, restore_allowed=None,
+                      proof="omission")
     if st is None:
-        return Assessment(rid, system, category, action, False, "", False)
+        return Assessment(rid, system, category, action, False, "", False, "none")
     ev = st["file_id"]
     if action == "DELETE":
         viol = st["present"]
@@ -140,13 +142,17 @@ def assess(rid: str, obs_all: list[Observation], acts: list[dict], audit_at, rul
         viol = st["restore_allowed"] if st["restore_allowed"] is not None else st["present"]
     else:  # RETAIN
         viol = False
-    return Assessment(rid, system, category, action, bool(viol), ev, True)
+    return Assessment(rid, system, category, action, bool(viol), ev, True, st.get("proof", "explicit"))
 
 
 def plan(assessments: list[Assessment]) -> tuple[str, list[dict]]:
+    """COMPLETE requires positive, admissible evidence for *every* record's required final state.
+    A case with no violation but a record whose state cannot be proven is not declared complete:
+    it is INCOMPLETE with the outstanding checks (and goes to the review queue)."""
     violations = [a for a in assessments if a.violation]
+    unproven = [a for a in assessments if not a.known]
     steps = []
-    if violations:
+    if violations or unproven or not assessments:
         status = "INCOMPLETE"
         for a in violations:
             f, r, _ = ACTION_OPS[a.action]

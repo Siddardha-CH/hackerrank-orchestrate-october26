@@ -340,6 +340,7 @@ def _parse_log_line(line: str):
             return None
     else:
         body = rest.replace('\\"', '"').lstrip("| ").strip()
+        body = re.sub(r'\bmessage="', " ", body)  # cloud-runtime lines wrap key=value pairs in message="..."
         # bracketed format: [LEVEL] [service] [trace] event: k="v"
         mb = re.match(r"\[(\w+)\] \[([\w-]+)\] \[([\w-]+)\] (\w+):(.*)$", body)
         mp = re.match(r"(\w+) \| ([\w-]+) \| ([\w-]+) \| (\w+) \|(.*)$", body)

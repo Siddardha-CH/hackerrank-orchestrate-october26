@@ -23,8 +23,12 @@ No API key is needed to reproduce `output.csv`.
 ```bash
 pip install -r code/requirements.txt
 python code/main.py                     # writes ./output.csv
-python code/evaluation/main.py          # metrics + custom cases + output validation -> code/evaluation/*.md
+python code/evaluation/main.py          # metrics, custom cases, robustness, output validation -> code/evaluation/*.md
+python -m unittest discover -s code/tests -t code   # unit tests (stdlib only)
 ```
+
+Outputs: `output.csv` (submission) and `review_queue.csv` (cases a human should confirm, with the reason;
+`python code/main.py --llm-review` adds a Claude second opinion to each row when `ANTHROPIC_API_KEY` is set).
 
 Optional live model use (only for screenshots not in the cache / undecidable request texts):
 `export ANTHROPIC_API_KEY=...` (`pip install anthropic`). Keys are read from the environment only.
@@ -54,6 +58,8 @@ evidence ─┼─ evidence.py    94 files -> ~3.3k normalised Observations
           │
 activity ─┼─ engine.py      linking: (1) identifier match  (2) data-catalog alias links  (3) workflow runs
           │                 for records that no longer carry identifiers
+          │  calibration.py  learns the workflow cadence from identifier-anchored runs (no constants)
+          │  assignment.py   exact max-weight assignment of runs to requests; near-ties -> review queue
           │
 rules ────┼─ policy.py      state at audit_at -> required action -> findings / remediation / verification
           └─ pipeline.py    ordering, serialisation, output.csv
@@ -68,11 +74,15 @@ rules ────┼─ policy.py      state at audit_at -> required action -> 
   hash; e.g. an attachment scan matching the subject's *old* phone number is found and deleted. Matching
   is exact and case-insensitive, so look-alikes such as `g.silva76.jr@…` are not attributed.
 * **Records without identifiers.** Deleted accounts (404) and anonymised analytics carry no identifier.
-  They are attributed through the deletion **workflow run** that touched them: follow-up actions run on a
-  fixed cadence, the opening account deletion precedes the first follow-up by whole minutes plus a constant
-  seconds offset, and the account deletion result is consistent with the request's reported status. Runs
-  are scored (direct-linked members, co-occurrence in the subject's evidence capture, timing) and assigned
-  greedily and exclusively across *all* participant-facing requests (sample requests act as context only).
+  They are attributed through the deletion **workflow run** that touched them. The scheduler's cadence,
+  the run-opener offsets, timing windows and the result/status mapping are **learned on every run** from
+  runs whose records *are* linked by identifiers (`calibration.py`); nothing is fitted to sample labels,
+  and on data without such regularity timing attribution switches itself off. Runs are scored (identifier
+  anchored members, co-occurrence in the subject's evidence capture, timing) and assigned by an exact
+  maximum-weight assignment across *all* participant-facing requests, so a record can never belong to two
+  people. Genuine ties are kept as the best-supported answer and listed in `review_queue.csv`.
+* **No COMPLETE without proof.** Every record's required final state needs admissible evidence; otherwise
+  the case stays INCOMPLETE and is queued for review.
 * **Absence proofs.** A capture covering a whole system (SQL dump, inventory scope, records-assurance
   snapshot) that omits a record proves it absent — used only when no capture shows the record.
 * **Replica drift.** All copies inside one capture are combined: a record redacted on the primary but still
@@ -89,9 +99,14 @@ rules ────┼─ policy.py      state at audit_at -> required action -> 
 
 * **Screenshots** (`code/audit/vision.py`): a vision-language model (Claude) turns each application screen
   into structured records using `VISION_PROMPT`. Results are cached by image SHA-256 in
-  `code/audit/vision_cache.json`, so the full run is deterministic and costs no tokens.
-* **Intent** (`code/audit/intent.py`): rules decide all 518 texts; `INTENT_PROMPT` is used only when the
-  rules find neither a deletion nor a non-deletion signal.
+  `code/audit/vision_cache.json`, so the full run is deterministic and costs no tokens. The prompt is in
+  `code/prompts/vision_extraction.md`.
+* **Intent** (`code/audit/intent.py`): rules decide all 518 texts - an erasure verb counts only when it
+  targets the account or the person's data, so a single-field edit is not a deletion. The prompt in
+  `code/prompts/intent_classification.md` is used only when the rules are undecided; without a model the
+  safe default is "no deletion".
+* **Review** (`code/audit/review.py`): flagged cases can get a Claude second opinion
+  (`code/prompts/case_review.md`); it is advisory and never changes `output.csv`.
 * The reasoning core is deliberately deterministic: the evidence is mostly structured, and exact parsing
   is cheaper, reproducible and auditable.
 
@@ -101,7 +116,10 @@ rules ────┼─ policy.py      state at audit_at -> required action -> 
 code/
   main.py                 CLI entry point
   requirements.txt
-  audit/                  the agent (data, intent, evidence, vision, engine, policy, pipeline)
+  audit/                  the agent (data, intent, evidence, vision, calibration, assignment, engine,
+                          policy, pipeline, review)
+  prompts/                model prompts (screenshot extraction, intent fallback, case review)
+  tests/                  unit tests
   evaluation/
     main.py               evaluation workflow (samples, custom cases, output validation, reports)
     compare.py            metrics

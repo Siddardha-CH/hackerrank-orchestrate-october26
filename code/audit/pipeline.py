@@ -7,7 +7,7 @@ import json
 from . import evidence
 from .data import World, parse_ts
 from .engine import Engine, Request
-from .intent import authorises_deletion
+from .intent import classify
 from .policy import assess, load_rules, plan
 
 
@@ -16,7 +16,7 @@ def _requests(rows, world: World) -> list[Request]:
     for r in rows:
         req = Request(r["case_id"], r["email"], parse_ts(r["requested_at"]), r["reported_status"],
                       parse_ts(r["reported_at"]), parse_ts(r["audit_at"]), r["request_text"])
-        req.deletion = authorises_deletion(req.text)
+        req.deletion, req.intent_source = classify(req.text)
         req.identity = world.resolve(req.email)
         out.append(req)
     return out
@@ -72,7 +72,34 @@ class Auditor:
             status, steps = plan(assessments)
             out.append({"case_id": req.case_id, "deletion_status": status, "steps": steps, "req": req,
                         "assessments": assessments})
+        self.review = self._review_queue(out)
         return out
+
+    def _review_queue(self, results) -> list[dict]:
+        """Cases a human should look at, with the reason.  The answer in output.csv is unchanged."""
+        ids = {r["case_id"] for r in results}
+        queue = [dict(x) for x in self.engine.review if x["case_id"] in ids]
+        for r in results:
+            req = r["req"]
+            if req.intent_source not in ("rule:targeted_erasure", "rule:multilingual_erasure", "rule:non_deletion"):
+                queue.append(dict(case_id=r["case_id"], reason="intent_not_decided_by_rules",
+                                  detail=f"intent source {req.intent_source}"))
+            if r["deletion_status"] == "NOT_APPLICABLE":
+                continue
+            for a in r["assessments"]:
+                if not a.known and a.action != "RETAIN" and not any(x.violation for x in r["assessments"]):
+                    queue.append(dict(case_id=r["case_id"], reason="state_unproven",
+                                      detail=f"{a.rid}: no admissible evidence of its state"))
+                if r["deletion_status"] == "COMPLETE" and a.proof == "omission":
+                    queue.append(dict(case_id=r["case_id"], reason="absence_by_omission_only",
+                                      detail=f"{a.rid}: absent only because {a.evidence} does not list it"))
+                why = req.resources.get(a.rid, set())
+                if why == {"workflow_timing"} and not any(o.file_id in req.home_files
+                                                   for o in self.engine.by_res.get(a.rid, [])):
+                    queue.append(dict(case_id=r["case_id"], reason="timing_only_link",
+                                      detail=f"{a.rid}: attributed by workflow timing only, no shared capture"))
+        queue.sort(key=lambda x: (_case_key(x["case_id"]), x["reason"], x["detail"]))
+        return queue
 
 
 def _case_key(cid: str):
@@ -80,6 +107,14 @@ def _case_key(cid: str):
         return int(cid.split("_")[-1])
     except ValueError:
         return cid
+
+
+def write_review_queue(queue: list[dict], path: str):
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["case_id", "reason", "detail", "llm_note"])
+        w.writeheader()
+        for row in queue:
+            w.writerow({k: row.get(k, "") for k in w.fieldnames})
 
 
 def write_output(results: list[dict], path: str):

@@ -40,6 +40,11 @@ HISTORY = [
     ("v4", "restore/replication events in runs, audit-time relevance for direct links", 1.0, 0.906, 0.992),
     ("v5", "replica-copy aggregation; omission only as fallback (first attempt regressed to 0.688)", 1.0, 0.906, 0.992),
     ("v6", "pipe-delimited log parser fix (8 COMPLETE eval cases had uncited steps -> 0)", 1.0, 0.906, 0.992),
+    ("v7", "post-interview: timing parameters learned from identifier anchors instead of constants "
+           "(first attempt mis-learned a residue, 0.719, fixed by two-stage calibration)", 1.0, 0.906, 0.992),
+    ("v8", "exact max-weight assignment (Hungarian) replaces greedy; near-ties go to review_queue.csv", 1.0, 0.906, 0.992),
+    ("v9", "target-aware intent rules; COMPLETE requires evidence for every record; cloud-log parser fix "
+           "found by a unit test", 1.0, 0.906, 0.992),
 ]
 
 
@@ -52,7 +57,8 @@ def run_samples(auditor):
     ctx = read_csv(os.path.join(DATASET, "deletion_requests.csv"))
     res = auditor.run(rows, ctx)
     gold = load_rows(os.path.join(DATASET, "sample_output.csv"))
-    return compare(as_pred(res), gold), gold
+    pred = as_pred(res)
+    return compare(pred, gold), gold, pred
 
 
 def run_custom(dataset_dir, gold, eval_pred):
@@ -140,7 +146,7 @@ def pct(x):
     return f"{100 * x:.1f}%"
 
 
-def write_report(sample_eval, custom, problems, n_rows, n_steps, status_counts):
+def write_report(sample_eval, custom, problems, n_rows, n_steps, status_counts, ex):
     m = sample_eval["metrics"]
     L = []
     L.append("# Evaluation report - Ghost Data Still Exists deletion-audit agent\n")
@@ -172,8 +178,47 @@ def write_report(sample_eval, custom, problems, n_rows, n_steps, status_counts):
     L.append("\nThese three gold steps reference resources that occur in **no** participant-visible file or activity "
              "(`account_004`, `audit_record_6645`, `audit_record_5569`), so they cannot be derived without guessing; "
              "we chose not to guess ids.\n")
+    L.append("### How much to trust the sample numbers\n")
+    L.append("The sample set was used while designing the rules, so its accuracy is optimistic. Mitigations:\n")
+    L.append("- **Nothing at runtime is fitted to labels.** Timing parameters are re-learned on every run from "
+             "identifier-anchored workflow runs (section 2); sample answers are only read by this evaluation script.")
+    b = ex["bootstrap"]
+    L.append(f"- **Uncertainty** (2,000 bootstrap resamples of the 32 cases): status accuracy 95% CI "
+             f"{pct(b['status'][0])}-{pct(b['status'][1])}; step F1 95% CI {pct(b['f1'][0])}-{pct(b['f1'][1])}. "
+             "With n=32 a perfect observed score is still compatible with a true error rate of a few percent.")
+    L.append("- **Split halves** (odd vs even case numbers, no re-tuning between them):\n")
+    L.append("| Half | Cases | Status acc. | Exact steps | Step F1 |\n|---|---|---|---|---|")
+    for name, hm in ex["halves"].items():
+        L.append(f"| {name} | {hm['cases']} | {pct(hm['status_accuracy'])} | {pct(hm['exact_steps_accuracy'])} "
+                 f"| {pct(hm['step_f1'])} |")
+    L.append("\nA trustworthy number for the 518 hidden-label cases needs a blind hand-labelled sample "
+             "(~50 cases stratified across the ~50 evidence batches, labelled before looking at agent output); "
+             "the label-free checks in section 4 cover all 518 cases in the meantime.\n")
 
-    L.append("## 2. Team-authored evaluation cases\n")
+    cal = ex["calibration"]
+    an = cal["anchors"]
+    L.append("## 2. Self-calibrated workflow parameters (learned from the data on every run)\n")
+    L.append("De-identified records are attributed through the deletion workflow run that touched them. The "
+             "scheduler cadence is **not hard-coded**: `code/audit/calibration.py` learns it from runs whose records "
+             "are linked to a request by identifiers. Values learned in the final run:\n")
+    L.append("| Parameter | Learned value | Anchors |\n|---|---|---|")
+    L.append(f"| Follow-up cadence (s) | {cal['chain_gaps']} | {an.get('follow_up_gaps')} anchored intervals |")
+    for ph, spec in sorted(cal["opener"].items()):
+        when = "before" if ph == "pre" else "after"
+        L.append(f"| Run opener, first action {when} report | gap {spec['lo']}-{spec['hi']} s, seconds residue "
+                 f"{spec['residue']} | {spec['n']} anchored account+run pairs |")
+    L.append(f"| Account-deletion window vs reported_at (min) | {cal['account_windows']} | "
+             f"{an.get('account_offsets')} anchored deletions |")
+    L.append(f"| First-action windows vs reported_at (min) | {cal['action_windows']} | "
+             f"{an.get('first_action_offsets')} anchored runs |")
+    L.append(f"| reported_result -> reported_status | {cal['status_map']} | >= 80% majority |")
+    L.append(f"| Prior (not learned) | events within {list(cal['prior_window'])} min of the report belong to it "
+             "| too few anchors to learn |\n")
+    L.append("If a dataset has no such regularity, calibration finds no anchors, the learned lists are empty and "
+             "timing attribution switches itself off: identifier linking still works and unlinked records are "
+             "reported as unproven instead of being guessed.\n")
+
+    L.append("## 3. Team-authored evaluation cases\n")
     L.append("Each case is a new request row run against the real dataset (it competes for evidence and "
              "workflow runs exactly like a real request). Expectations are exact answers or metamorphic "
              "relations to another case.\n")
@@ -188,7 +233,8 @@ def write_report(sample_eval, custom, problems, n_rows, n_steps, status_counts):
         L.append(json.dumps({"input": r, "output": c["pred"]}, ensure_ascii=False, indent=1)[:3000])
         L.append("```\n</details>\n")
 
-    L.append("## 3. Submission file checks (`output.csv`)\n")
+    L.append("## 4. Label-free checks on all 518 cases\n")
+    L.append("### Submission file (`output.csv`)\n")
     L.append(f"- rows: {n_rows}; total steps: {n_steps}; status counts: {status_counts}")
     L.append(f"- structural problems found: **{len(problems)}**")
     for p in problems[:30]:
@@ -196,8 +242,24 @@ def write_report(sample_eval, custom, problems, n_rows, n_steps, status_counts):
     L.append("- checks: header, one row per request, natural `case_id` order, JSON parses, consecutive `step_no`, "
              "phase/operation/state vocabulary, findings cite evidence, COMPLETE verifications cite evidence, "
              "future steps have empty evidence, every cited id exists and no cited file was captured after `audit_at`.\n")
+    L.append("### Robustness\n")
+    L.append("| Check | Result |\n|---|---|")
+    for k, v in ex["robustness"].items():
+        L.append(f"| {k} | {v} |")
+    L.append("")
+    L.append("### Review queue (`review_queue.csv`)\n")
+    L.append("The output contract has no 'undecided' status, so the agent always emits its best-supported answer "
+             "and separately lists cases a human should confirm. Dropping an uncertain record instead would hide "
+             "data from the audit and could turn an INCOMPLETE case into a false COMPLETE.\n")
+    L.append("| Reason | Rows |\n|---|---|")
+    for k, v in sorted(ex["review"].items()):
+        L.append(f"| `{k}` | {v} |")
+    L.append(f"\n{ex['review_cases']} of 518 cases have at least one flag. With `--llm-review` and an API key, "
+             "each flagged case is sent with its evidence packet to Claude (`code/prompts/case_review.md`) for a "
+             "second opinion that is attached to the row but never changes `output.csv`.\n")
+    L.append(f"### Unit tests\n\n`python -m unittest discover -s code/tests -t code`: **{ex['tests']}**\n")
 
-    L.append("## 4. Failures found and improvements made\n")
+    L.append("## 5. Failures found and improvements made\n")
     L.append("| Version | Change | Status acc. | Exact steps | Step F1 |\n|---|---|---|---|---|")
     for v, desc, s, e, f in HISTORY:
         L.append(f"| {v} | {desc} | {pct(s)} | {pct(e)} | {pct(f)} |")
@@ -232,6 +294,29 @@ Failures found while iterating, and what fixed them:
    uncited COMPLETE step.
 8. **Negated requests.** "This is an information request, not a request to erase it" contains an
    erasure word. Fix: explicit non-deletion/negation patterns are evaluated first (custom case 3).
+
+Improvements made after the AI-judge interview (each was a weakness raised in that discussion):
+
+9. **Hard-coded timing constants.** The cadence (390/449/1110/1169 s), opener residues (41/52 s), windows
+   and the status map are now learned from identifier-anchored runs on each execution. The first version
+   learned a wrong residue (10 s) because the true first action of a pre-report run is usually an
+   already-clean record with no identifier; two-stage calibration (learn cadence, extend anchored runs to
+   their real first action, then learn openers) recovered every value independently.
+10. **Greedy, order-dependent assignment.** Replaced by an exact maximum-weight assignment per connected
+    component (stdlib Hungarian, `assignment.py`); a unit test shows a case where greedy is suboptimal.
+    Input order no longer matters (robustness table). 30 genuine ties remain - runs that differ in nothing
+    but time - and are listed in the review queue rather than decided silently; versus the previously
+    submitted file only three tied pairs (cases 225/226, 345/346, 408/409) changed.
+11. **Over-broad intent rules.** "remov" / "is gone" alone used to authorise deletion, so "Please remove
+    the old shipping address from my profile" would have been a full account deletion. Erasure verbs now
+    need the account or the person's data as their object; single-field edits fall through to the LLM
+    prompt or the safe default (no deletion). All 550 dataset texts classify exactly as before.
+12. **COMPLETE without proof.** A case is COMPLETE only if every record's required final state has
+    admissible evidence; otherwise it stays INCOMPLETE and is queued for review.
+13. **Silent parser gap.** A new unit test showed that a key placed first inside a cloud-runtime
+    `message="..."` field was swallowed; fixed in the log parser.
+14. **AI where it adds value.** Prompts live in `code/prompts/*.md` (screenshot extraction, intent
+    fallback, case review); the optional `--llm-review` second opinion targets only flagged cases.
 """)
     with open(os.path.join(HERE, "evaluation_report.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(L))
@@ -280,9 +365,82 @@ def write_usage(usage):
         fh.write("\n".join(L))
 
 
+def bootstrap(pred, gold, n=2000, seed=7):
+    import random
+    rnd = random.Random(seed)
+    ids = sorted(gold)
+    status, f1 = [], []
+    for _ in range(n):
+        pick = [rnd.choice(ids) for _ in ids]
+        g = {f"{c}#{k}": gold[c] for k, c in enumerate(pick)}
+        p = {f"{c}#{k}": pred[c] for k, c in enumerate(pick)}
+        m = compare(p, g)["metrics"]
+        status.append(m["status_accuracy"])
+        f1.append(m["step_f1"])
+    status.sort()
+    f1.sort()
+    lo, hi = int(0.025 * n), int(0.975 * n) - 1
+    return {"status": (status[lo], status[hi]), "f1": (f1[lo], f1[hi])}
+
+
+def halves(pred, gold):
+    out = {}
+    for name, keep in (("odd case numbers", 1), ("even case numbers", 0)):
+        g = {c: v for c, v in gold.items() if int(c.split("_")[1]) % 2 == keep}
+        out[name] = compare({c: pred[c] for c in g}, g)["metrics"]
+    return out
+
+
+def _digest(results):
+    import hashlib
+    blob = json.dumps([(r["case_id"], r["deletion_status"], r["steps"]) for r in
+                       sorted(results, key=lambda r: int(r["case_id"].split("_")[1]))], sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()[:12]
+
+
+def robustness():
+    import random
+    import subprocess
+    import tempfile
+    rows = read_csv(os.path.join(DATASET, "deletion_requests.csv"))
+    ctx = read_csv(os.path.join(DATASET, "sample_deletion_requests.csv"))
+    base = Auditor(DATASET).run(rows, ctx)
+    out = {}
+    again = Auditor(DATASET).run(rows, ctx)
+    out["Determinism (two fresh runs)"] = "identical" if _digest(base) == _digest(again) else "DIFFERENT"
+    shuffled = rows[:]
+    random.Random(3).shuffle(shuffled)
+    sh = Auditor(DATASET).run(shuffled, list(reversed(ctx)))
+    out["Input order (shuffled requests and context)"] = "identical" if _digest(base) == _digest(sh) else "DIFFERENT"
+    alone = Auditor(DATASET).run(rows, [])
+    diff = sum(1 for a, b in zip(sorted(base, key=lambda r: r["case_id"]), sorted(alone, key=lambda r: r["case_id"]))
+               if (a["deletion_status"], a["steps"]) != (b["deletion_status"], b["steps"]))
+    out["Without sample requests as context"] = f"{diff} of {len(rows)} cases differ"
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "pypdf.py"), "w") as fh:
+            fh.write("raise ImportError('blocked for test')\n")
+        target = os.path.join(tmp, "out.csv")
+        env = dict(os.environ, PYTHONPATH=tmp, PYTHONIOENCODING="utf-8")
+        subprocess.run([sys.executable, os.path.join(CODE, "main.py"), "--output", target,
+                        "--review-queue", os.path.join(tmp, "rq.csv"), "--usage-json", os.path.join(tmp, "u.json")],
+                       env=env, check=True, capture_output=True)
+        same = load_rows(target) == load_rows(os.path.join(ROOT, "output.csv"))
+        out["Without pypdf installed (PDF text cache fallback)"] = "identical" if same else "DIFFERENT"
+    return out
+
+
+def run_tests():
+    import io
+    import unittest
+    suite = unittest.defaultTestLoader.discover(os.path.join(CODE, "tests"), top_level_dir=CODE)
+    res = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(suite)
+    bad = len(res.failures) + len(res.errors)
+    return f"{res.testsRun - bad}/{res.testsRun} passed"
+
+
 def main():
     auditor = Auditor(DATASET)
-    sample_eval, gold = run_samples(auditor)
+    sample_eval, gold, sample_pred = run_samples(auditor)
     out_path = os.path.join(ROOT, "output.csv")
     eval_pred = load_rows(out_path)
     custom = run_custom(DATASET, gold, eval_pred)
@@ -290,14 +448,23 @@ def main():
     status_counts = {}
     for p in eval_pred.values():
         status_counts[p["deletion_status"]] = status_counts.get(p["deletion_status"], 0) + 1
-    write_report(sample_eval, custom, problems, n_rows, n_steps, status_counts)
     usage_path = os.path.join(HERE, "last_run_usage.json")
     usage = json.load(open(usage_path, encoding="utf-8")) if os.path.exists(usage_path) else {}
+    review_rows = read_csv(os.path.join(ROOT, "review_queue.csv")) if os.path.exists(
+        os.path.join(ROOT, "review_queue.csv")) else []
+    review = {}
+    for r in review_rows:
+        review[r["reason"]] = review.get(r["reason"], 0) + 1
+    extra = dict(bootstrap=bootstrap(sample_pred, gold), halves=halves(sample_pred, gold),
+                 calibration=usage.get("calibration", {}), robustness=robustness(), review=review,
+                 review_cases=len({r["case_id"] for r in review_rows}), tests=run_tests())
+    write_report(sample_eval, custom, problems, n_rows, n_steps, status_counts, extra)
     write_usage(usage)
     m = sample_eval["metrics"]
     print(json.dumps({k: v for k, v in m.items() if k != "field_accuracy"}, indent=1))
     print("custom:", [(c["case"]["id"], c["ok"]) for c in custom])
     print("output problems:", len(problems), problems[:5])
+    print("robustness:", extra["robustness"], "tests:", extra["tests"])
 
 
 if __name__ == "__main__":

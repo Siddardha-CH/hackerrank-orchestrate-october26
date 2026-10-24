@@ -1,6 +1,6 @@
 {
   "requests": 518,
-  "seconds": 0.81,
+  "seconds": 1.0,
   "vision": {
     "calls": 0,
     "input_tokens": 0,
@@ -12,6 +12,78 @@
     "calls": 0,
     "input_tokens": 0,
     "output_tokens": 0
+  },
+  "review_llm": {
+    "calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "model": "claude-opus-5-5"
+  },
+  "review_queue": 149,
+  "calibration": {
+    "chain_gaps": [
+      390,
+      449,
+      1110,
+      1169
+    ],
+    "opener": {
+      "post": {
+        "residue": 52,
+        "lo": 4792,
+        "hi": 8392,
+        "n": 116
+      },
+      "pre": {
+        "residue": 41,
+        "lo": 641,
+        "hi": 3100,
+        "n": 23
+      }
+    },
+    "account_windows": [
+      [
+        -79.9,
+        -39.0
+      ],
+      [
+        -15.0,
+        15.0
+      ]
+    ],
+    "action_windows": [
+      [
+        -34.0,
+        -23.1
+      ],
+      [
+        -15.0,
+        15.0
+      ],
+      [
+        33.0,
+        86.4
+      ]
+    ],
+    "status_map": {
+      "FAILED": "NOT_STARTED",
+      "PARTIAL": "PARTIALLY_COMPLETE",
+      "SUCCESS": "COMPLETE"
+    },
+    "anchors": {
+      "requests_with_anchors": 467,
+      "follow_up_gaps": 412,
+      "opener_pairs": {
+        "post": 161,
+        "pre": 23
+      },
+      "account_offsets": 248,
+      "first_action_offsets": 403
+    },
+    "prior_window": [
+      -15.0,
+      15.0
+    ]
   },
   "status_counts": {
     "COMPLETE": 149,

@@ -1,6 +1,6 @@
 # Token usage and cost - final full-dataset run
 
-Run: `python code/main.py` over `dataset/deletion_requests.csv` (518 requests), wall time 0.81 s, statuses {'COMPLETE': 149, 'INCOMPLETE': 359, 'NOT_APPLICABLE': 10}.
+Run: `python code/main.py` over `dataset/deletion_requests.csv` (518 requests), wall time 1.0 s, statuses {'COMPLETE': 149, 'INCOMPLETE': 359, 'NOT_APPLICABLE': 10}.
 
 ## Final run (the run that produced `output.csv`)
 

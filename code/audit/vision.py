@@ -7,11 +7,11 @@ tokens once the cache is warm.
 
 * If a cache entry exists for the exact image bytes it is used.
 * Otherwise, when ``ANTHROPIC_API_KEY`` is set, the image is sent to Claude with
-  ``VISION_PROMPT`` and the JSON answer is cached.
+  the prompt in ``code/prompts/vision_extraction.md`` and the JSON answer is cached.
 * Otherwise the image contributes no observations (a warning is recorded).
 
 The cache shipped with the repository was produced with Claude (claude-opus-5-5)
-reading each screenshot using exactly ``VISION_PROMPT``.
+reading each screenshot with the prompt in ``code/prompts/vision_extraction.md``.
 """
 from __future__ import annotations
 
@@ -24,21 +24,14 @@ import sys
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "vision_cache.json")
 MODEL = os.environ.get("AUDIT_VISION_MODEL", "claude-opus-5-5")
 
-VISION_PROMPT = """You are reading a screenshot of an internal Northstar Shop business application.
-Extract only facts that are visible. Return JSON:
-{"application": str, "subject": {"name": str|null, "emails": [str], "user_ids": [str]},
- "records": [{"resource_id": str|null, "alias": str|null, "system": str,
-              "category": one of USER_PROFILE|SEARCH_INDEX_ENTRY|ANALYTICS_PROFILE|SUPPORT_MESSAGE|
-                         SUPPORT_ATTACHMENT|USER_EXPORT|MARKETING_PROFILE|SECURITY_AUDIT_LOG|
-                         BACKUP_ARCHIVE|DATA_FLOW|ACCOUNT_TOMBSTONE|null,
-              "present": bool, "exposed": bool|null, "enabled": bool|null,
-              "restore_allowed": bool|null, "identifiers": [str]}]}
-Rules: one record per row/panel that refers to a customer data resource. `resource_id` is an
-internal id such as account_123 / search_45 / data_flow_9; when the row is identified only by a file
-name, statement number or customer key put it in `alias`. `identifiers` lists every email, user_id,
-phone or name shown for that row. `exposed` is true when direct identifiers (name/email/phone) are
-displayed for the customer. `enabled` is true for connectors shown as running/healthy/continuous.
-Ignore rows that clearly belong to staff or business accounts."""
+PROMPT_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts",
+                           "vision_extraction.md")
+
+
+def vision_prompt() -> str:
+    text = open(PROMPT_PATH, encoding="utf-8").read()
+    return text.split("---", 1)[-1].strip()
+
 
 _cache = None
 
@@ -67,7 +60,7 @@ def _call_model(path: str) -> dict | None:
         model=MODEL, max_tokens=2000,
         messages=[{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}},
-            {"type": "text", "text": VISION_PROMPT}]}])
+            {"type": "text", "text": vision_prompt()}]}])
     USAGE["calls"] += 1
     USAGE["input_tokens"] += msg.usage.input_tokens
     USAGE["output_tokens"] += msg.usage.output_tokens
